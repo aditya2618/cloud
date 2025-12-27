@@ -10,5 +10,6 @@ urlpatterns = [
     # API endpoints
     path('api/auth/', include('accounts.urls')),
     path('api/gateways/', include('gateways.urls')),
+    path('api/homes/', include('homes.urls')),
     path('api/remote/', include('remote_control.urls')),
 ]

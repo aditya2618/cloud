@@ -39,5 +39,35 @@ class HomeMetadata(models.Model):
         verbose_name = 'Home Metadata'
         verbose_name_plural = 'Home Metadata'
         
+    
     def __str__(self):
         return f"{self.name} ({self.id})"
+
+
+class SyncedDevice(models.Model):
+    """
+    Mirror of a device/entity from the edge gateway.
+    Synced via WebSocket when gateway connects.
+    """
+    home = models.ForeignKey(
+        HomeMetadata, 
+        on_delete=models.CASCADE, 
+        related_name='devices'
+    )
+    edge_id = models.IntegerField(help_text="ID on the local gateway")
+    
+    name = models.CharField(max_length=255)
+    entity_type = models.CharField(max_length=50)
+    device_name = models.CharField(max_length=255, blank=True)
+    
+    state = models.JSONField(default=dict, blank=True)
+    is_online = models.BooleanField(default=True)
+    
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        # Each ID is unique per home
+        unique_together = ('home', 'edge_id')
+        
+    def __str__(self):
+        return f"{self.name} ({self.entity_type})"
