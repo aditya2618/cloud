@@ -134,7 +134,8 @@ AUTH_USER_MODEL = 'accounts.CloudUser'
 # REST Framework Configuration
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'accounts.authentication.JWTAuthentication',  # ⭐ Custom JWT auth
+        'rest_framework_simplejwt.authentication.JWTAuthentication',  # Fallback for compatibility
     ),
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
