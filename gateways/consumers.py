@@ -150,8 +150,23 @@ class GatewayConsumer(AsyncWebsocketConsumer):
     async def sync_devices(self, devices):
         """Update synced devices in DB"""
         from homes.models import SyncedDevice, HomeMetadata
+        from gateways.models import Gateway
         try:
-            home = await sync_to_async(HomeMetadata.objects.get)(id=self.home_id)
+            # Ensure HomeMetadata exists (create if missing)
+            @sync_to_async
+            def get_home_metadata():
+                try:
+                    return HomeMetadata.objects.get(id=self.home_id)
+                except HomeMetadata.DoesNotExist:
+                    logger.warning(f"⚠️ HomeMetadata missing for {self.home_id}, creating now...")
+                    gateway = Gateway.objects.get(id=self.gateway_id)
+                    return HomeMetadata.objects.create(
+                        id=self.home_id,
+                        gateway=gateway,
+                        name=gateway.name or f"Home {self.home_id[:8]}"
+                    )
+
+            home = await get_home_metadata()
             
             @sync_to_async
             def save_all_devices(home_obj, device_list):
