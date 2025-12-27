@@ -55,6 +55,9 @@ class GatewayConsumer(AsyncWebsocketConsumer):
         data = json.loads(text_data)
         print(f"📨 Gateway message: {data.get('type')}")
         
+        # Forward to clients waiting for this data
+        await self.channel_layer.group_send(
+            f'client_{self.home_id}',
             {
                 'type': 'gateway_response',
                 'data': data
