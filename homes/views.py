@@ -24,6 +24,37 @@ class DeviceListView(generics.ListAPIView):
             return SyncedDevice.objects.none()
         return SyncedDevice.objects.filter(home__id=home_id)
 
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        
+        # Group entities by device
+        devices = {}
+        for entity in serializer.data:
+            dev_name = entity.get('device_name') or 'Unknown Device'
+            
+            if dev_name not in devices:
+                # Generate a consistent ID from the name (hash)
+                # Ensure it fits in integer (positive)
+                dev_id = abs(hash(dev_name)) % 10000000
+                
+                devices[dev_name] = {
+                    "id": dev_id,
+                    "name": dev_name,
+                    "node_name": dev_name,
+                    "is_online": entity.get('is_online', False),
+                    "entities": []
+                }
+            
+            # Add entity to device
+            devices[dev_name]["entities"].append(entity)
+            
+            # If any entity is online, mark device online (simplistic logic)
+            if entity.get('is_online'):
+                 devices[dev_name]["is_online"] = True
+                 
+        return Response(list(devices.values()))
+
 
 class DeviceControlView(APIView):
     permission_classes = [IsAuthenticated]
