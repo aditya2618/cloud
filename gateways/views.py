@@ -122,8 +122,7 @@ class CompletePairingView(APIView):
         if serializer.is_valid():
             code = serializer.validated_data['pairing_code']
             gateway_uuid = serializer.validated_data['gateway_uuid']
-            home_id = serializer.validated_data['home_id']
-            name = serializer.validated_data.get('name', f'Home {home_id}')
+            gateway_name = serializer.validated_data.get('name', 'Smart Home Gateway')
             version = serializer.validated_data.get('version', '')
             
             # Validate pairing code
@@ -137,6 +136,11 @@ class CompletePairingView(APIView):
                         status=status.HTTP_400_BAD_REQUEST
                     )
                 
+                # Generate new home_id for this gateway
+                import uuid
+                home_id = uuid.uuid4()
+                home_name = pairing_code.home_name or 'My Smart Home'
+                
                 # Generate secure secret for gateway authentication
                 secret = Gateway.generate_secret()
                 secret_hash = make_password(secret)
@@ -146,13 +150,13 @@ class CompletePairingView(APIView):
                     id=gateway_uuid,  # Use gateway's self-generated UUID
                     home_id=home_id,
                     owner=pairing_code.user,
-                    name=name,
+                    name=gateway_name,
                     version=version,
                     secret_hash=secret_hash,
                     status='online'
                 )
                 
-                # Create owner permission
+                # Create owner permission for this home
                 HomePermission.objects.create(
                     user=pairing_code.user,
                     home_id=home_id,

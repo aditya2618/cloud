@@ -23,7 +23,7 @@ class CompletePairingSerializer(serializers.Serializer):
     """Gateway submits UUID + pairing code to complete registration"""
     pairing_code = serializers.CharField(max_length=8)
     gateway_uuid = serializers.UUIDField()
-    home_id = serializers.UUIDField()
+    # NOTE: home_id is NOT provided by gateway - cloud creates/assigns home
     name = serializers.CharField(max_length=255, required=False, allow_blank=True)
     version = serializers.CharField(max_length=50, required=False, allow_blank=True)
 
