@@ -48,9 +48,9 @@ def generate_access_token(user, expiry_minutes=15):
     expiration = now + timedelta(minutes=expiry_minutes)
     
     payload = {
-        'user_id': user.id,
+        'user_id': str(user.id) if hasattr(user.id, 'hex') else user.id,  # Convert UUID to string
         'email': user.email,
-        'homes': get_user_homes(user),  # ⭐ KEY FEATURE: Home access list
+        'homes': get_user_homes(user),  # ⭐ KEY FEATURE: Home access list (already strings)
         'iat': int(now.timestamp()),
         'exp': int(expiration.timestamp()),
         'token_type': 'access'
@@ -77,7 +77,7 @@ def generate_refresh_token(user, expiry_days=30):
     expiration = now + timedelta(days=expiry_days)
     
     payload = {
-        'user_id': user.id,
+        'user_id': str(user.id) if hasattr(user.id, 'hex') else user.id,  # Convert UUID to string
         'email': user.email,
         'iat': int(now.timestamp()),
         'exp': int(expiration.timestamp()),
