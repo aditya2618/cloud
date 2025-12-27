@@ -8,8 +8,46 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from django.contrib.auth import get_user_model
 from .serializers import UserRegistrationSerializer, UserSerializer, ChangePasswordSerializer
+from .login_serializer import LoginSerializer, JWTResponseSerializer
+from .jwt_utils import generate_access_token, generate_refresh_token, get_user_homes
 
 User = get_user_model()
+
+
+class LoginView(APIView):
+    """
+    Login endpoint with JWT containing home_ids.
+    
+    POST /api/auth/login
+    Body: { "email": "user@example.com", "password": "pass" }
+    Response: {
+        "access": "jwt_token",
+        "refresh": "refresh_token",
+        "user": {...},
+        "homes": ["uuid1", "uuid2", ...]
+    }
+    """
+    permission_classes = (permissions.AllowAny,)
+    
+    def post(self, request):
+        serializer = LoginSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        user = serializer.validated_data['user']
+        
+        # Generate JWT tokens with custom claims
+        access_token = generate_access_token(user)
+        refresh_token = generate_refresh_token(user)
+        homes = get_user_homes(user)
+        
+        response_data = {
+            'access': access_token,
+            'refresh': refresh_token,
+            'user': UserSerializer(user).data,
+            'homes': homes  # ⭐ List of accessible home_ids
+        }
+        
+        return Response(response_data, status=status.HTTP_200_OK)
 
 
 class RegisterView(generics.CreateAPIView):

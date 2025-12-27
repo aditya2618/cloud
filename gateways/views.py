@@ -4,19 +4,192 @@ Gateway provisioning and management views
 from rest_framework import status, generics, permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from django.contrib.auth.hashers import make_password
+from django.contrib.auth.hashers import make_password, check_password
 from .models import Gateway, HomePermission
+from .pairing_codes import PairingCode
 from .serializers import (
     GatewayProvisionSerializer,
     GatewaySerializer,
     GatewayProvisionResponseSerializer,
     HomePermissionSerializer
 )
+from .pairing_serializers import (
+    PairingCodeRequestSerializer,
+    PairingCodeResponseSerializer,
+    CompletePairingSerializer,
+    CompletePairingResponseSerializer
+)
+
+
+class PairingCodeRequestView(APIView):
+    """
+    Request a new pairing code for gateway registration.
+    
+    POST /api/gateways/request-pairing
+    Body: { "home_name": "optional", "expiry_minutes": 10 }
+    Response: { "code": "12345678", "expires_at": "...", "message": "..." }
+    
+    This is called from the mobile app when user wants to add a new gateway.
+    """
+    permission_classes = (permissions.IsAuthenticated,)
+    
+    def post(self, request):
+        serializer = PairingCodeRequestSerializer(data=request.data)
+        
+        if serializer.is_valid():
+            home_name = serializer.validated_data.get('home_name', '')
+            expiry_minutes = serializer.validated_data.get('expiry_minutes', 10)
+            
+            # Create pairing code
+            pairing_code = PairingCode.create_for_user(
+                user=request.user,
+                home_name=home_name,
+                expiry_minutes=expiry_minutes
+            )
+            
+            response_data = {
+                'code': pairing_code.code,
+                'expires_at': pairing_code.expires_at,
+                'message': f'Pairing code generated. Enter this code on your gateway within {expiry_minutes} minutes.'
+            }
+            
+            response_serializer = PairingCodeResponseSerializer(data=response_data)
+            response_serializer.is_valid()
+            
+            return Response(
+                response_serializer.data,
+                status=status.HTTP_201_CREATED
+            )
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class VerifyPairingCodeView(APIView):
+    """
+    Verify if a pairing code is valid (for UI feedback).
+    
+    GET /api/gateways/verify-pairing/{code}
+    Response: { "valid": true/false, "message": "..." }
+    """
+    permission_classes = (permissions.AllowAny,)  # No auth needed for verification
+    
+    def get(self, request, code):
+        try:
+            pairing_code = PairingCode.objects.get(code=code)
+            
+            if pairing_code.is_valid():
+                return Response({
+                    'valid': True,
+                    'message': 'Pairing code is valid'
+                })
+            else:
+                reason = 'already used' if pairing_code.is_used else 'expired'
+                return Response({
+                    'valid': False,
+                    'message': f'Pairing code is {reason}'
+                })
+        except PairingCode.DoesNotExist:
+            return Response({
+                'valid': False,
+                'message': 'Invalid pairing code'
+            })
+
+
+class CompletePairingView(APIView):
+    """
+    Complete gateway pairing (called by local gateway).
+    
+    POST /api/gateways/complete-pairing
+    Body: {
+        "pairing_code": "12345678",
+        "gateway_uuid": "uuid-from-gateway",
+        "home_id": "uuid-from-edge",
+        "name": "My Home",
+        "version": "1.0.0"
+    }
+    Response: {
+        "gateway_id": "uuid",
+        "home_id": "uuid", 
+        "secret": "token",
+        "message": "..."
+    }
+    """
+    permission_classes = (permissions.AllowAny,)  # Gateway doesn't have auth yet
+    
+    def post(self, request):
+        serializer = CompletePairingSerializer(data=request.data)
+        
+        if serializer.is_valid():
+            code = serializer.validated_data['pairing_code']
+            gateway_uuid = serializer.validated_data['gateway_uuid']
+            home_id = serializer.validated_data['home_id']
+            name = serializer.validated_data.get('name', f'Home {home_id}')
+            version = serializer.validated_data.get('version', '')
+            
+            # Validate pairing code
+            try:
+                pairing_code = PairingCode.objects.get(code=code)
+                
+                if not pairing_code.is_valid():
+                    reason = 'already used' if pairing_code.is_used else 'expired'
+                    return Response(
+                        {'error': f'Pairing code is {reason}'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                
+                # Generate secure secret for gateway authentication
+                secret = Gateway.generate_secret()
+                secret_hash = make_password(secret)
+                
+                # Create gateway registration
+                gateway = Gateway.objects.create(
+                    id=gateway_uuid,  # Use gateway's self-generated UUID
+                    home_id=home_id,
+                    owner=pairing_code.user,
+                    name=name,
+                    version=version,
+                    secret_hash=secret_hash,
+                    status='online'
+                )
+                
+                # Create owner permission
+                HomePermission.objects.create(
+                    user=pairing_code.user,
+                    home_id=home_id,
+                    role='owner',
+                    granted_by=pairing_code.user
+                )
+                
+                # Mark pairing code as used
+                pairing_code.mark_used(gateway)
+                
+                response_data = {
+                    'gateway_id': gateway.id,
+                    'home_id': gateway.home_id,
+                    'secret': secret,
+                    'message': 'Gateway paired successfully! Store the secret securely.'
+                }
+                
+                response_serializer = CompletePairingResponseSerializer(data=response_data)
+                response_serializer.is_valid()
+                
+                return Response(
+                    response_serializer.data,
+                    status=status.HTTP_201_CREATED
+                )
+                
+            except PairingCode.DoesNotExist:
+                return Response(
+                    {'error': 'Invalid pairing code'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class GatewayProvisionView(APIView):
     """
-    Gateway provisioning endpoint.
+    Gateway provisioning endpoint (LEGACY - use pairing code flow instead).
     
     POST /api/gateways/provision
     Body: { "home_id": "uuid", "name": "optional_name" }
