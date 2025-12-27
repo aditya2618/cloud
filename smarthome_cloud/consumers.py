@@ -73,7 +73,7 @@ class GatewayConsumer(AsyncWebsocketConsumer):
         try:
             token = Token.objects.get(key=token_key)
             return token.user
-        except Token.DoesNotExist:
+        except Exception:
             return None
 
 
@@ -170,5 +170,5 @@ class ClientConsumer(AsyncWebsocketConsumer):
         try:
             token = Token.objects.get(key=token_key)
             return token.user
-        except Token.DoesNotExist:
+        except Exception:
             return None
