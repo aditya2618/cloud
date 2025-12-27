@@ -66,15 +66,16 @@ class RegisterView(generics.CreateAPIView):
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
         
-        # Generate JWT tokens for the new user
-        refresh = RefreshToken.for_user(user)
+        # Generate JWT tokens using custom utilities (same as login)
+        access_token = generate_access_token(user)
+        refresh_token = generate_refresh_token(user)
+        homes = get_user_homes(user)
         
         return Response({
             'user': UserSerializer(user).data,
-            'tokens': {
-                'refresh': str(refresh),
-                'access': str(refresh.access_token),
-            },
+            'access': access_token,
+            'refresh': refresh_token,
+            'homes': homes,
             'message': 'User registered successfully'
         }, status=status.HTTP_201_CREATED)
 
