@@ -16,9 +16,12 @@ django_asgi_app = get_asgi_application()
 
 # Import consumers after Django is initialized
 from bridge.consumers import BridgeConsumer
+from smarthome_cloud.consumers import GatewayConsumer, ClientConsumer
 
 websocket_urlpatterns = [
     path('bridge/', BridgeConsumer.as_asgi()),
+    path('ws/gateway/<str:home_id>/', GatewayConsumer.as_asgi()),
+    path('ws/client/<str:home_id>/', ClientConsumer.as_asgi()),
 ]
 
 application = ProtocolTypeRouter({
