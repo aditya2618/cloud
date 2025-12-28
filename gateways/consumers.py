@@ -20,7 +20,63 @@ class GatewayConsumer(AsyncWebsocketConsumer):
     
     async def connect(self):
         """Handle gateway WebSocket connection"""
-        # Get gateway credentials from query string
+        user = self.scope.get('user')
+        
+        # 1. Try Token Authentication (if user is populated by TokenAuthMiddleware)
+        if user and user.is_authenticated:
+            try:
+                # Find gateway for this user
+                # We prioritize finding a gateway associated with the user's permissions
+                # If home_id is in URL, we try to use it, but if it's numeric (local ID) or missing,
+                # we just find the first available gateway for this user.
+                
+                from gateways.models import Gateway, HomePermission
+                
+                @sync_to_async
+                def get_gateway_for_user(user_obj):
+                    # Try to find a gateway this user has access to
+                    permission = HomePermission.objects.filter(user=user_obj).first()
+                    if permission:
+                        return permission.gateway
+                    # Fallback: check if user owns any home directly (if model supports it) or implies permission
+                    return None
+
+                gateway = await get_gateway_for_user(user)
+                
+                if gateway:
+                    self.gateway_id = str(gateway.id)
+                    self.home_id = str(gateway.home_id)
+                    self.group_name = f"gateway_{self.home_id}"
+                    
+                    # Add to channel group
+                    await self.channel_layer.group_add(
+                        self.group_name,
+                        self.channel_name
+                    )
+                    
+                    # Update gateway status
+                    gateway.status = 'online'
+                    await sync_to_async(gateway.save)(update_fields=['status'])
+                    
+                    await self.accept()
+                    logger.info(f"✅ Gateway connected via Token: {self.gateway_id} (home: {self.home_id})")
+                    
+                    # Request initial device sync
+                    await self.send(text_data=json.dumps({
+                        "type": "get_devices",
+                        "request_id": "sync_on_connect"
+                    }))
+                    return
+                else:
+                    logger.warning(f"❌ User {user} has no associated gateway")
+                    await self.close()
+                    return
+            except Exception as e:
+                logger.error(f"❌ Token Auth Error: {e}")
+                await self.close()
+                return
+
+        # 2. Key/Secret Authentication (Legacy/fallback)
         try:
             query_string = self.scope['query_string'].decode()
             if not query_string:
