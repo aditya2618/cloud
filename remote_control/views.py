@@ -73,22 +73,21 @@ def control_entity(request, home_id, entity_id):
             status=status.HTTP_400_BAD_REQUEST
         )
     
+    # Optional: Check if we have a BridgeSession for tracking/monitoring
+    # But allow control even without it (bypass connections don't create sessions)
+    bridge_session = None
     try:
         bridge_session = BridgeSession.objects.get(gateway=gateway)
+        
+        # Check if session is still active (last ping within 2 minutes)
+        if bridge_session and bridge_session.last_ping:
+            time_since_ping = timezone.now() - bridge_session.last_ping
+            if time_since_ping > timedelta(minutes=2):
+                # Session exists but is stale - log warning but allow command
+                pass  # Could log here if needed
     except BridgeSession.DoesNotExist:
-        return Response(
-            {"error": "Gateway is offline. Cannot control devices remotely."},
-            status=status.HTTP_503_SERVICE_UNAVAILABLE
-        )
-    
-    # Check if session is still active (last ping within 2 minutes)
-    if bridge_session.last_ping:
-        time_since_ping = timezone.now() - bridge_session.last_ping
-        if time_since_ping > timedelta(minutes=2):
-            return Response(
-                {"error": "Gateway connection is stale. Please wait for reconnection."},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE
-            )
+        # No session found - this is OK for bypass connections
+        pass
     
     # Generate command ID for tracking
     command_id = str(uuid.uuid4())
