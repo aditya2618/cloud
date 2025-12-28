@@ -4,14 +4,14 @@ Provides gateway UUID lookup for mobile app cloud mode
 """
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 
 from gateways.models import HomePermission
 
 
 @api_view(['GET'])
-# @permission_classes([IsAuthenticated])  # TODO: Re-enable after testing
+@permission_classes([AllowAny])  # Override global auth - TODO: Re-enable auth after testing
 def get_user_gateways(request):
     """
     Get all gateways (homes) accessible by the current user.
