@@ -45,7 +45,9 @@ class GatewayConsumer(AsyncWebsocketConsumer):
                 
                 if gateway:
                     self.gateway_id = str(gateway.id)
-                    self.home_id = str(gateway.home_id)
+                    # Use URL home_id if available, otherwise use gateway's home_id
+                    url_home_id = self.scope['url_route']['kwargs'].get('home_id')
+                    self.home_id = url_home_id if url_home_id else str(gateway.home_id)
                     self.group_name = f"gateway_{self.home_id}"
                     
                     # Add to channel group
