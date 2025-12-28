@@ -39,17 +39,29 @@ def control_entity(request, home_id, entity_id):
         "command_id": "uuid"
     }
     """
-    # Check user has permission for this home
-    try:
-        permission = HomePermission.objects.get(
-            user=request.user,
-            home_id=home_id
-        )
-    except HomePermission.DoesNotExist:
-        return Response(
-            {"error": "You don't have permission to access this home"},
-            status=status.HTTP_403_FORBIDDEN
-        )
+    # For testing: skip user permission check if anonymous
+    # TODO: Re-enable user check after implementing cloud auth
+    if request.user.is_authenticated:
+        try:
+            permission = HomePermission.objects.get(
+                user=request.user,
+                home_id=home_id
+            )
+            gateway = permission.gateway
+        except HomePermission.DoesNotExist:
+            return Response(
+                {"error": "You don't have permission to access this home"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+    else:
+        # Anonymous access for testing - look up gateway directly
+        try:
+            gateway = Gateway.objects.get(home_id=home_id)
+        except Gateway.DoesNotExist:
+            return Response(
+                {"error": "Gateway not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
     
     # Get command from request
     command_type = request.data.get('command')
@@ -61,8 +73,6 @@ def control_entity(request, home_id, entity_id):
             status=status.HTTP_400_BAD_REQUEST
         )
     
-    # Find active bridge session for this gateway
-    gateway = permission.gateway
     try:
         bridge_session = BridgeSession.objects.get(
             gateway=gateway,
@@ -138,20 +148,29 @@ def run_scene(request, home_id, scene_id):
         "command_id": "uuid"
     }
     """
-    # Check user has permission for this home
-    try:
-        permission = HomePermission.objects.get(
-            user=request.user,
-            home_id=home_id
-        )
-    except HomePermission.DoesNotExist:
-        return Response(
-            {"error": "You don't have permission to access this home"},
-            status=status.HTTP_403_FORBIDDEN
-        )
-    
-    # Find active bridge session
-    gateway = permission.gateway
+    # For testing: skip user permission check if anonymous
+    # TODO: Re-enable user check after implementing cloud auth
+    if request.user.is_authenticated:
+        try:
+            permission = HomePermission.objects.get(
+                user=request.user,
+                home_id=home_id
+            )
+            gateway = permission.gateway
+        except HomePermission.DoesNotExist:
+            return Response(
+                {"error": "You don't have permission to access this home"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+    else:
+        # Anonymous access for testing - look up gateway directly
+        try:
+            gateway = Gateway.objects.get(home_id=home_id)
+        except Gateway.DoesNotExist:
+            return Response(
+                {"error": "Gateway not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
     try:
         bridge_session = BridgeSession.objects.get(
             gateway=gateway,
@@ -238,7 +257,7 @@ def get_gateway_status(request, home_id):
     else:
         # Anonymous access for testing - look up gateway directly
         try:
-            gateway = Gateway.objects.get(gateway_id=home_id)
+            gateway = Gateway.objects.get(home_id=home_id)
         except Gateway.DoesNotExist:
             return Response(
                 {"error": "Gateway not found"},
@@ -263,7 +282,7 @@ def get_gateway_status(request, home_id):
             session_status = "online"  # Just connected, no ping yet
         
         return Response({
-            "gateway_id": str(gateway.gateway_id),
+            "gateway_id": str(gateway.home_id),
             "status": session_status,
             "last_ping": bridge_session.last_ping_at.isoformat() if bridge_session.last_ping_at else None,
             "connected_at": bridge_session.connected_at.isoformat()
@@ -271,7 +290,7 @@ def get_gateway_status(request, home_id):
         
     except BridgeSession.DoesNotExist:
         return Response({
-            "gateway_id": str(gateway.gateway_id),
+            "gateway_id": str(gateway.home_id),
             "status": "offline",
             "last_ping": None,
             "connected_at": None
