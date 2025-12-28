@@ -74,10 +74,7 @@ def control_entity(request, home_id, entity_id):
         )
     
     try:
-        bridge_session = BridgeSession.objects.get(
-            gateway=gateway,
-            disconnected_at__isnull=True
-        )
+        bridge_session = BridgeSession.objects.get(gateway=gateway)
     except BridgeSession.DoesNotExist:
         return Response(
             {"error": "Gateway is offline. Cannot control devices remotely."},
@@ -85,8 +82,8 @@ def control_entity(request, home_id, entity_id):
         )
     
     # Check if session is still active (last ping within 2 minutes)
-    if bridge_session.last_ping_at:
-        time_since_ping = timezone.now() - bridge_session.last_ping_at
+    if bridge_session.last_ping:
+        time_since_ping = timezone.now() - bridge_session.last_ping
         if time_since_ping > timedelta(minutes=2):
             return Response(
                 {"error": "Gateway connection is stale. Please wait for reconnection."},
@@ -172,10 +169,7 @@ def run_scene(request, home_id, scene_id):
                 status=status.HTTP_404_NOT_FOUND
             )
     try:
-        bridge_session = BridgeSession.objects.get(
-            gateway=gateway,
-            disconnected_at__isnull=True
-        )
+        bridge_session = BridgeSession.objects.get(gateway=gateway)
     except BridgeSession.DoesNotExist:
         return Response(
             {"error": "Gateway is offline. Cannot run scenes remotely."},
@@ -183,8 +177,8 @@ def run_scene(request, home_id, scene_id):
         )
     
     # Check session freshness
-    if bridge_session.last_ping_at:
-        time_since_ping = timezone.now() - bridge_session.last_ping_at
+    if bridge_session.last_ping:
+        time_since_ping = timezone.now() - bridge_session.last_ping
         if time_since_ping > timedelta(minutes=2):
             return Response(
                 {"error": "Gateway connection is stale. Please wait for reconnection."},
@@ -266,14 +260,11 @@ def get_gateway_status(request, home_id):
     
     # Find active session
     try:
-        bridge_session = BridgeSession.objects.get(
-            gateway=gateway,
-            disconnected_at__isnull=True
-        )
+        bridge_session = BridgeSession.objects.get(gateway=gateway)
         
         # Determine status
-        if bridge_session.last_ping_at:
-            time_since_ping = timezone.now() - bridge_session.last_ping_at
+        if bridge_session.last_ping:
+            time_since_ping = timezone.now() - bridge_session.last_ping
             if time_since_ping > timedelta(minutes=2):
                 session_status = "stale"
             else:
@@ -284,7 +275,7 @@ def get_gateway_status(request, home_id):
         return Response({
             "gateway_id": str(gateway.home_id),
             "status": session_status,
-            "last_ping": bridge_session.last_ping_at.isoformat() if bridge_session.last_ping_at else None,
+            "last_ping": bridge_session.last_ping.isoformat() if bridge_session.last_ping else None,
             "connected_at": bridge_session.connected_at.isoformat()
         })
         
