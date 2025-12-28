@@ -216,11 +216,17 @@ class GatewayConsumer(AsyncWebsocketConsumer):
                 await self.update_entity_state(data)
                 
                 # Forward state update to clients
+                client_data = data.copy()
+                if 'entity_id' in client_data:
+                    client_data['type'] = 'entity_state'
+                elif 'device_id' in client_data:
+                    client_data['type'] = 'device_status'
+
                 await self.channel_layer.group_send(
-                    f"home_{self.home_id}",
+                    f"client_{self.home_id}",
                     {
-                        'type': 'entity_state_update',
-                        'data': data
+                        'type': 'gateway_response',
+                        'data': client_data
                     }
                 )
                 
@@ -239,6 +245,10 @@ class GatewayConsumer(AsyncWebsocketConsumer):
     
     async def proxy_command(self, event):
         """Forward command from client to gateway"""
+        await self.send(text_data=json.dumps(event['data']))
+
+    async def proxy_request(self, event):
+        """Forward general request from client to gateway"""
         await self.send(text_data=json.dumps(event['data']))
 
     async def sync_devices(self, devices):
