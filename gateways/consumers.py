@@ -36,7 +36,11 @@ class GatewayConsumer(AsyncWebsocketConsumer):
                     # Try to find a gateway this user has access to
                     permission = HomePermission.objects.filter(user=user_obj).first()
                     if permission:
-                        return permission.gateway
+                        try:
+                            # Permission links to home_id, so find gateway for that home
+                            return Gateway.objects.get(home_id=permission.home_id)
+                        except Gateway.DoesNotExist:
+                            return None
                     return None
 
                 gateway = None
@@ -49,9 +53,19 @@ class GatewayConsumer(AsyncWebsocketConsumer):
                     # Allow connection if we have a target Home ID in URL
                     url_home_id = self.scope['url_route']['kwargs'].get('home_id')
                     if url_home_id:
-                        self.home_id = url_home_id
-                        self.gateway_id = f"bypass_gateway_{self.home_id}"
-                        self.group_name = f"gateway_{self.home_id}"
+                        # HYBRID FIX:
+                        # Control Channel (REST) uses UUID -> Join gateway_{UUID}
+                        # State Channel (Mobile WS) uses "1" -> Set self.home_id = "1"
+                        
+                        self.group_name = f"gateway_{url_home_id}"
+                        self.gateway_id = f"bypass_gateway_{url_home_id}"
+                        
+                        # If it looks like a UUID, force internal Home ID to 1 for compatibility
+                        if len(url_home_id) > 10:
+                            logger.info(f"🔄 Bridging UUID {url_home_id} to Home ID 1")
+                            self.home_id = "1"
+                        else:
+                            self.home_id = url_home_id
                         
                         await self.channel_layer.group_add(
                             self.group_name,
