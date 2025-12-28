@@ -104,13 +104,20 @@ def control_entity(request, home_id, entity_id):
         command_payload["value"] = command_value
     
     try:
-        # Send to the specific gateway's channel
-        async_to_sync(channel_layer.send)(
-            bridge_session.channel_name,
+        # Send to the gateway's channel group (works for both bypass and regular connections)
+        gateway_group = f"gateway_{home_id}"
+        
+        async_to_sync(channel_layer.group_send)(
+            gateway_group,
             {
-                "type": "send_command",
-                "command_id": command_id,
-                "payload": command_payload
+                "type": "proxy.command",  # Note: dots become underscores in handler method name
+                "data": {
+                    "type": "control_entity",
+                    "command_id": command_id,
+                    "entity_id": entity_id,
+                    "command": command_type,
+                    "value": command_value
+                }
             }
         )
         
