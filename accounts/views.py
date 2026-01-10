@@ -30,8 +30,15 @@ class LoginView(APIView):
     permission_classes = (permissions.AllowAny,)
     
     def post(self, request):
+        import logging
+        logger = logging.getLogger('accounts')
+        logger.info(f"🔐 Login attempt - Data received: {request.data}")
+        logger.info(f"🔐 Content-Type: {request.content_type}")
+        
         serializer = LoginSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        if not serializer.is_valid():
+            logger.error(f"🔐 Login validation failed: {serializer.errors}")
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
         user = serializer.validated_data['user']
         
@@ -39,6 +46,8 @@ class LoginView(APIView):
         access_token = generate_access_token(user)
         refresh_token = generate_refresh_token(user)
         homes = get_user_homes(user)
+        
+        logger.info(f"✅ Login successful for: {user.email}")
         
         response_data = {
             'access': access_token,
