@@ -2,21 +2,31 @@
 Login serializer with JWT response including home IDs
 """
 from rest_framework import serializers
-from django.contrib.auth import authenticate
-from .jwt_utils import generate_access_token, generate_refresh_token, get_user_homes
+from django.contrib.auth import authenticate, get_user_model
+
+User = get_user_model()
 
 
 class LoginSerializer(serializers.Serializer):
-    """Login with email/password, returns JWT with home_ids"""
-    email = serializers.EmailField()
+    """Login with email OR username/password, returns JWT with home_ids"""
+    email = serializers.CharField()  # Changed from EmailField to CharField to accept username too
     password = serializers.CharField(write_only=True)
     
     def validate(self, data):
-        email = data.get('email')
+        identifier = data.get('email')  # Could be email or username
         password = data.get('password')
         
-        if email and password:
-            user = authenticate(username=email, password=password)
+        if identifier and password:
+            # Try to authenticate with identifier as username first
+            user = authenticate(username=identifier, password=password)
+            
+            # If that fails, try to find user by email and authenticate
+            if not user:
+                try:
+                    user_obj = User.objects.get(email=identifier)
+                    user = authenticate(username=user_obj.email, password=password)
+                except User.DoesNotExist:
+                    pass
             
             if not user:
                 raise serializers.ValidationError('Invalid credentials')
@@ -28,7 +38,7 @@ class LoginSerializer(serializers.Serializer):
             data['user'] = user
             return data
         else:
-            raise serializers.ValidationError('Must include email and password')
+            raise serializers.ValidationError('Must include email/username and password')
 
 
 class JWTResponseSerializer(serializers.Serializer):
@@ -37,3 +47,4 @@ class JWTResponseSerializer(serializers.Serializer):
     refresh = serializers.CharField()
     user = serializers.DictField()
     homes = serializers.ListField(child=serializers.CharField())
+
