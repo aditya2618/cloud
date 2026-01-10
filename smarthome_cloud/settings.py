@@ -18,6 +18,9 @@ DEBUG = os.getenv('DEBUG', 'True') == 'True'
 
 ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
+# Allow URLs without trailing slashes (important for mobile app POST requests)
+APPEND_SLASH = False
+
 # Application definition
 
 INSTALLED_APPS = [

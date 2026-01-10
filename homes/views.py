@@ -13,46 +13,66 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-class DeviceListView(generics.ListAPIView):
-    serializer_class = SyncedDeviceSerializer
+class DeviceListView(APIView):
+    """
+    GET /api/homes/{home_id}/devices/
+    Returns devices with entities from cache, triggers sync if stale
+    """
     permission_classes = [IsAuthenticated]
-
-    def get_queryset(self):
-        home_id = self.kwargs['home_id']
-        # Verify permission
-        if not HomePermission.objects.filter(user=self.request.user, home_id=home_id).exists():
-            return SyncedDevice.objects.none()
-        return SyncedDevice.objects.filter(home__id=home_id)
-
-    def list(self, request, *args, **kwargs):
-        queryset = self.get_queryset()
-        serializer = self.get_serializer(queryset, many=True)
+    
+    def get(self, request, home_id):
+        from .models import CachedEntity
+        from .sync_service import HomeDataSyncService
         
-        # Group entities by device
+        # Check permission
+        permission = HomePermission.objects.filter(user=request.user, home_id=home_id).first()
+        if not permission:
+            return Response({"error": "Permission denied"}, status=status.HTTP_403_FORBIDDEN)
+        
+        gateway = permission.gateway
+        
+        # Get home metadata
+        try:
+            home = HomeMetadata.objects.get(gateway=gateway)
+        except HomeMetadata.DoesNotExist:
+            # Trigger initial sync
+            HomeDataSyncService.request_sync(gateway)
+            return Response([])  # Return empty for now, will populate after sync
+        
+        # Check if sync needed (stale data > 30s)
+        if HomeDataSyncService.should_sync(home):
+            HomeDataSyncService.request_sync(gateway)
+        
+        # Get cached entities and group by device
+        entities = CachedEntity.objects.filter(home=home)
+        
         devices = {}
-        for entity in serializer.data:
-            dev_name = entity.get('device_name') or 'Unknown Device'
+        for entity in entities:
+            dev_name = entity.device_name or 'Unknown Device'
+            dev_id = entity.device_id or abs(hash(dev_name)) % 10000000
             
             if dev_name not in devices:
-                # Generate a consistent ID from the name (hash)
-                # Ensure it fits in integer (positive)
-                dev_id = abs(hash(dev_name)) % 10000000
-                
                 devices[dev_name] = {
                     "id": dev_id,
                     "name": dev_name,
-                    "node_name": dev_name,
-                    "is_online": entity.get('is_online', False),
+                    "node_name": entity.device_node_name or dev_name,
+                    "is_online": True,  # Gateway is connected if we're here
                     "entities": []
                 }
             
-            # Add entity to device
-            devices[dev_name]["entities"].append(entity)
-            
-            # If any entity is online, mark device online (simplistic logic)
-            if entity.get('is_online'):
-                 devices[dev_name]["is_online"] = True
-                 
+            # Add entity
+            devices[dev_name]["entities"].append({
+                "id": entity.edge_id,
+                "name": entity.name,
+                "entity_type": entity.entity_type,
+                "subtype": entity.subtype,
+                "state": entity.state,
+                "capabilities": entity.capabilities,
+                "unit": entity.unit,
+                "is_controllable": entity.is_controllable,
+                "location": entity.location,
+            })
+        
         return Response(list(devices.values()))
 
 
