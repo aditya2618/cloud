@@ -139,6 +139,14 @@ class BridgeConsumer(AsyncWebsocketConsumer):
                 # TODO: Store in cloud database
                 logger.info(f"🔄 Sync data from gateway {self.gateway_id}")
             
+            elif message_type == 'home_data_response':
+                # Full home data response - cache it
+                await self.handle_home_data_response(data)
+            
+            elif message_type == 'state_update':
+                # Real-time state update from local
+                await self.handle_state_update(data)
+            
         except json.JSONDecodeError:
             logger.error(f"✗ Invalid JSON from gateway {self.gateway_id}")
         except Exception as e:
@@ -172,6 +180,40 @@ class BridgeConsumer(AsyncWebsocketConsumer):
         """
         logger.info(f"📡 Relaying command to gateway {self.gateway_id}")
         await self.send(text_data=json.dumps(event['data']))
+    
+    async def handle_home_data_response(self, data):
+        """Process home data sync response from local gateway"""
+        from homes.sync_service import HomeDataSyncService
+        
+        logger.info(f"📥 Received home data from gateway {self.gateway_id}")
+        
+        try:
+            # Process and cache the sync data
+            success = await database_sync_to_async(HomeDataSyncService.process_sync_response)(
+                self.gateway, data
+            )
+            
+            if success:
+                logger.info(f"✅ Home data cached for gateway {self.gateway_id}")
+            else:
+                logger.error(f"❌ Failed to cache home data for gateway {self.gateway_id}")
+                
+        except Exception as e:
+            logger.error(f"❌ Error processing home data: {e}")
+    
+    async def handle_state_update(self, data):
+        """Process real-time entity state update from local gateway"""
+        from homes.sync_service import HomeDataSyncService
+        
+        entity_id = data.get('entity_id')
+        state = data.get('state')
+        
+        if entity_id and state:
+            # Update cached entity state
+            await database_sync_to_async(HomeDataSyncService.update_entity_state)(
+                self.gateway, entity_id, state
+            )
+            logger.debug(f"📊 Updated state for entity {entity_id}")
     
     
     # Database helper methods
